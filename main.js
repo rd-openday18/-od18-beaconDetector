@@ -4,13 +4,20 @@ var RESTClient = require('node-rest-client').Client;
 var RESTclient = new RESTClient();
 
 const BLEScanPeriod = 20000;
+const GWPingPeriod = 5000;
 var detectoruuid = '';
 const Auth = "Basic c29sYWNlLWNsb3VkLWNsaWVudDpodWZuYXVsMTdhaG1hMGc2amY0MTE1cnRuaA=="
-const postUrl = "http://mr-xy4p60ezz.messaging.solace.cloud:20298/TOPIC/beaconping"
+const beaconpingpostUrl = "http://mr-xy4p60ezz.messaging.solace.cloud:20298/TOPIC/beaconping"
+const gwpingpostUrl = "http://mr-xy4p60ezz.messaging.solace.cloud:20298/TOPIC/gwping"
 
 var beaconDetected = [];
 // set content-type header and data as json in args parameter 
-var POSTargs = {
+var beaconpingPOSTargs = {
+    data: { },
+    headers: { "Content-Type": "application/json", "Authorization" : Auth}
+};
+
+var gwpingPOSTargs = {
     data: { },
     headers: { "Content-Type": "application/json", "Authorization" : Auth}
 };
@@ -28,9 +35,9 @@ BLEScanSignatures = function() {
         beaconDetected.forEach(function(aBeacon) {
             lstBeacon.push ({'gwid':detectoruuid, 'address':aBeacon.address, 'rssi':aBeacon.rssi, 'name':aBeacon.advertisement.localName, 'txpower':aBeacon.advertisement.txPowerLevel})
         })
-        POSTargs.data={'beacons':lstBeacon};
-        RESTclient.post(postUrl, POSTargs, function(data, response) {
-            console.log (JSON.stringify(POSTargs.data))
+        beaconpingPOSTargs.data={'beacons':lstBeacon};
+        RESTclient.post(beaconpingpostUrl, beaconpingPOSTargs, function(data, response) {
+            console.log (JSON.stringify(beaconpingPOSTargs.data))
             console.log(`Beacons reported to backbone (${response.statusCode} ${response.statusMessage})`)          
         })
     }
@@ -53,12 +60,22 @@ BLEState = function (state) {
     }
 }
 
+GWPing = function () {
+
+    gwpingPOSTargs.data={'gwid':detectoruuid};
+    RESTclient.post(gwpingpostUrl, gwpingPOSTargs, function(data, response) {
+        console.log(`GW Ping reported to backbone (${response.statusCode} ${response.statusMessage})`)          
+    })
+    setTimeout(GWPing, GWPingPeriod)    
+}
+
 noble.on('discover', BLEDiscovered);
 noble.on('stateChange', BLEState);
 
 require("machine-uuid")(function(uuid) {
     detectoruuid = uuid;
     console.log ("BLE Detector unique ID: "+detectoruuid)
+    GWPing();
 })
 
 //noble.startScanning();
