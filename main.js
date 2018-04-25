@@ -1,11 +1,15 @@
 var noble = require('noble');
 var RESTClient = require('node-rest-client').Client;
+var os = require('os');
+var ifaces = os.networkInterfaces();
 
 var RESTclient = new RESTClient();
 
 const BLEScanPeriod = 20000;
 const GWPingPeriod = 5000;
 var detectoruuid = '';
+var inet = [];
+
 const Auth = "Basic c29sYWNlLWNsb3VkLWNsaWVudDpodWZuYXVsMTdhaG1hMGc2amY0MTE1cnRuaA=="
 const beaconpingpostUrl = "http://mr-xy4p60ezz.messaging.solace.cloud:20298/TOPIC/beaconping"
 const gwpingpostUrl = "http://mr-xy4p60ezz.messaging.solace.cloud:20298/TOPIC/gwping"
@@ -62,8 +66,29 @@ BLEState = function (state) {
 
 GWPing = function () {
 
-    gwpingPOSTargs.data={'gwid':detectoruuid};
+    inet = [];
+    Object.keys(ifaces).forEach(function (ifname) {
+        var alias = 0;
+        
+        ifaces[ifname].forEach(function (iface) {
+            if ('IPv4' !== iface.family || iface.internal !== false) {
+            // skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
+            return;
+            }
+        
+            if (alias >= 1) {
+            } else {
+            // this interface has only one ipv4 adress
+            inet.push ({'ip':iface.address})
+            }
+            ++alias;
+        });
+    });
+
+    gwpingPOSTargs.data={'gwid':detectoruuid, 'inet':inet};
+
     RESTclient.post(gwpingpostUrl, gwpingPOSTargs, function(data, response) {
+        console.log (JSON.stringify(gwpingPOSTargs.data))
         console.log(`GW Ping reported to backbone (${response.statusCode} ${response.statusMessage})`)          
     })
     setTimeout(GWPing, GWPingPeriod)    
