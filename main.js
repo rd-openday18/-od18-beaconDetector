@@ -29,6 +29,7 @@ var gwpingPOSTargs = {
 
 
 BLEDiscovered = function(peripheral) {
+    peripheral.ts = (new Date).getTime();
     beaconDetected.push(peripheral);
     console.log (`${peripheral.id} ${peripheral.rssi} ${peripheral.address} ${peripheral.advertisement.localName} ${peripheral.advertisement.txPowerLevel}`)
 }
@@ -38,7 +39,7 @@ BLEScanSignatures = function() {
     if (beaconDetected.length>0) {
         console.log (`Report ${beaconDetected.length} beacons`)
         beaconDetected.forEach(function(aBeacon) {
-            lstBeacon.push ({'gwid':detectoruuid, 'address':aBeacon.address, 'rssi':aBeacon.rssi, 'name':aBeacon.advertisement.localName, 'txpower':aBeacon.advertisement.txPowerLevel})
+            lstBeacon.push ({'ts':aBeacon.ts, 'gwid':detectoruuid, 'address':aBeacon.address, 'rssi':aBeacon.rssi, 'name':aBeacon.advertisement.localName, 'txpower':aBeacon.advertisement.txPowerLevel})
         })
         beaconpingPOSTargs.data={'beacons':lstBeacon};
         RESTclient.post(beaconpingpostUrl, beaconpingPOSTargs, function(data, response) {
@@ -86,7 +87,7 @@ GWPing = function () {
         });
     });
 
-    gwpingPOSTargs.data={'gwid':detectoruuid, 'inet':inet};
+    gwpingPOSTargs.data={'ts':(new Date).getTime(), 'gwid':detectoruuid, 'inet':inet};
 
     RESTclient.post(gwpingpostUrl, gwpingPOSTargs, function(data, response) {
         console.log (JSON.stringify(gwpingPOSTargs.data))
