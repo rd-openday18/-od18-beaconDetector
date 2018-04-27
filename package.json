@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google-cloud/pubsub": "^0.18.0",
     "machine-uuid": "^1.2.0",
     "noble": "^1.9.1",
     "node-rest-client": "^3.1.0"

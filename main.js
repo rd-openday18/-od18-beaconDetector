@@ -1,14 +1,40 @@
-//change3
 var noble = require('noble');
 var RESTClient = require('node-rest-client').Client;
 var os = require('os');
 var ifaces = os.networkInterfaces();
 var RESTclient = new RESTClient();
-``
+
+const PubSub = require('@google-cloud/pubsub');
+const projectId = 'geotag-200012';
+const pubsub = new PubSub();
+
+// The name for the new topic
+const beaconTopicName = 'beaconping';
+const gwTopicName = 'gwping';
+
+
 // Few params
 const continuous = true;
 const BLEScanPeriod = 20000;
 const GWPingPeriod = 5000;
+const usePubSub = true;
+
+// PubSub init
+var pubsubClient = null;
+if (usePubSub) {
+    // Instantiates a client
+    pubsubClient = new PubSub({
+    projectId: projectId,
+  });
+}
+
+
+const beaconTopic = pubsub.topic(beaconTopicName);
+const gwTopic = pubsub.topic(gwTopicName);
+const beaconPublisher = beaconTopic.publisher();
+const gwPublisher = gwTopic.publisher();
+const beaconData = Buffer.from('Beacon Signature Trace');
+const gwData = Buffer.from('GW Signature Trace');
 
 // GLobal var
 var detectoruuid = '';
@@ -34,11 +60,23 @@ var gwpingPOSTargs = {
 BLEDiscovered = function(peripheral) {
     peripheral.ts = (new Date).getTime();
     if (continuous) {
-        beaconpingPOSTargs.data={'beacon': { 'ts':peripheral.ts, 'gwid':detectoruuid, 'address':peripheral.address, 'rssi':peripheral.rssi, 'name':peripheral.advertisement.localName, 'txpower':peripheral.advertisement.txPowerLevel}}
-        RESTclient.post(beaconpingpostUrl, beaconpingPOSTargs, function(data, response) {
-            console.log (JSON.stringify(beaconpingPOSTargs.data))
-            console.log(`Beacons reported to backbone (${response.statusCode} ${response.statusMessage})`)          
-        })
+        beaconpingPOSTargs.data={ 'ts':peripheral.ts.toString(), 'gwid':detectoruuid, 'address':peripheral.address, 'rssi':peripheral.rssi.toString(), 'name':((peripheral.advertisement.localName != undefined) ? peripheral.advertisement.localName: "uknown"), 'txpower':((peripheral.advertisement.txPowerLevel != undefined) ? peripheral.advertisement.txPowerLevel.toString():'unknown')}
+        if (!usePubSub) {
+            RESTclient.post(beaconpingpostUrl, beaconpingPOSTargs, function(data, response) {
+                console.log (JSON.stringify(beaconpingPOSTargs.data))
+                console.log(`Beacons reported to backbone (${response.statusCode} ${response.statusMessage})`)          
+            })    
+        } else {
+            //console.log (beaconpingPOSTargs.data)
+            beaconPublisher.publish(beaconData, beaconpingPOSTargs.data, function(err, messageId) {
+                if (err) {
+                    // Error handling omitted.
+                    console.log ("PubSub error "+err);
+                  } else {
+                    console.log(`Beacons reported to pubsub`)                                
+                  }           
+            });    
+        }
     } else {
         beaconDetected.push(peripheral);
         console.log (`${peripheral.id} ${peripheral.rssi} ${peripheral.address} ${peripheral.advertisement.localName} ${peripheral.advertisement.txPowerLevel}`)    
@@ -52,13 +90,24 @@ BLEScanSignatures = function() {
         if (beaconDetected.length>0) {
             console.log (`Report ${beaconDetected.length} beacons`)
             beaconDetected.forEach(function(aBeacon) {
-                lstBeacon.push ({'ts':aBeacon.ts, 'gwid':detectoruuid, 'address':aBeacon.address, 'rssi':aBeacon.rssi, 'name':aBeacon.advertisement.localName, 'txpower':aBeacon.advertisement.txPowerLevel})
+                lstBeacon.push ({'ts':aBeacon.ts.toString(), 'gwid':detectoruuid, 'address':aBeacon.address, 'rssi':aBeacon.rssi.toString(), 'name':aBeacon.advertisement.localName, 'txpower':aBeacon.advertisement.txPowerLevel.toString()})
             })
             beaconpingPOSTargs.data={'beacons':lstBeacon};
-            RESTclient.post(beaconpingpostUrl, beaconpingPOSTargs, function(data, response) {
-                console.log (JSON.stringify(beaconpingPOSTargs.data))
-                console.log(`Beacons reported to backbone (${response.statusCode} ${response.statusMessage})`)          
-            })
+            if (!usePubSub) {            
+                RESTclient.post(beaconpingpostUrl, beaconpingPOSTargs, function(data, response) {
+                    console.log (JSON.stringify(beaconpingPOSTargs.data))
+                    console.log(`Beacons reported to backbone (${response.statusCode} ${response.statusMessage})`)          
+                })
+            } else {
+                beaconPublisher.publish(beaconData,beaconpingPOSTargs.data, function(err, messageId) {
+                    if (err) {
+                        // Error handling omitted.
+                        console.log ("PubSub error "+err);
+                      }  else {
+                        console.log(`Beacons reported to pubsub`)                                
+                      }            
+                });    
+            }
         }    
         setTimeout(BLEScanSignatures, BLEScanPeriod)
     }
@@ -101,12 +150,25 @@ GWPing = function () {
         });
     });
 
-    gwpingPOSTargs.data={'ts':(new Date).getTime(), 'gwid':detectoruuid, 'inet':inet};
 
-    RESTclient.post(gwpingpostUrl, gwpingPOSTargs, function(data, response) {
-        console.log (JSON.stringify(gwpingPOSTargs.data))
-        console.log(`GW Ping reported to backbone (${response.statusCode} ${response.statusMessage})`)          
-    })
+    if (!usePubSub) {
+        gwpingPOSTargs.data={'ts':((new Date).getTime()).toString(), 'gwid':detectoruuid, 'inet':inet};
+        RESTclient.post(gwpingpostUrl, gwpingPOSTargs, function(data, response) {
+            console.log (JSON.stringify(gwpingPOSTargs.data))
+            console.log(`GW Ping reported to backbone (${response.statusCode} ${response.statusMessage})`)          
+        })    
+    } else {
+        gwpingPOSTargs.data={'ts':((new Date).getTime()).toString(), 'gwid':detectoruuid, 'ip':inet[0].ip};
+        //console.log (JSON.stringify(gwpingPOSTargs.data))
+        gwPublisher.publish(gwData, gwpingPOSTargs.data, function(err, messageId) {
+            if (err) {
+                // Error handling omitted.
+                console.log ("PubSub error "+err);
+              } else {
+                console.log(`GW Ping reported to pubsub`)          
+              }           
+        });    
+    }
     setTimeout(GWPing, GWPingPeriod)    
 }
 
