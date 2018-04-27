@@ -3,11 +3,14 @@ var noble = require('noble');
 var RESTClient = require('node-rest-client').Client;
 var os = require('os');
 var ifaces = os.networkInterfaces();
-
 var RESTclient = new RESTClient();
-
+``
+// Few params
+const continuous = true;
 const BLEScanPeriod = 20000;
 const GWPingPeriod = 5000;
+
+// GLobal var
 var detectoruuid = '';
 var inet = [];
 
@@ -30,28 +33,39 @@ var gwpingPOSTargs = {
 
 BLEDiscovered = function(peripheral) {
     peripheral.ts = (new Date).getTime();
-    beaconDetected.push(peripheral);
-    console.log (`${peripheral.id} ${peripheral.rssi} ${peripheral.address} ${peripheral.advertisement.localName} ${peripheral.advertisement.txPowerLevel}`)
-}
-
-BLEScanSignatures = function() {
-    lstBeacon = [];
-    if (beaconDetected.length>0) {
-        console.log (`Report ${beaconDetected.length} beacons`)
-        beaconDetected.forEach(function(aBeacon) {
-            lstBeacon.push ({'ts':aBeacon.ts, 'gwid':detectoruuid, 'address':aBeacon.address, 'rssi':aBeacon.rssi, 'name':aBeacon.advertisement.localName, 'txpower':aBeacon.advertisement.txPowerLevel})
-        })
-        beaconpingPOSTargs.data={'beacons':lstBeacon};
+    if (continuous) {
+        beaconpingPOSTargs.data={'beacon': { 'ts':peripheral.ts, 'gwid':detectoruuid, 'address':peripheral.address, 'rssi':peripheral.rssi, 'name':peripheral.advertisement.localName, 'txpower':peripheral.advertisement.txPowerLevel}}
         RESTclient.post(beaconpingpostUrl, beaconpingPOSTargs, function(data, response) {
             console.log (JSON.stringify(beaconpingPOSTargs.data))
             console.log(`Beacons reported to backbone (${response.statusCode} ${response.statusMessage})`)          
         })
+    } else {
+        beaconDetected.push(peripheral);
+        console.log (`${peripheral.id} ${peripheral.rssi} ${peripheral.address} ${peripheral.advertisement.localName} ${peripheral.advertisement.txPowerLevel}`)    
+    }
+}
+
+BLEScanSignatures = function() {
+
+    if (!continuous) {
+        lstBeacon = [];
+        if (beaconDetected.length>0) {
+            console.log (`Report ${beaconDetected.length} beacons`)
+            beaconDetected.forEach(function(aBeacon) {
+                lstBeacon.push ({'ts':aBeacon.ts, 'gwid':detectoruuid, 'address':aBeacon.address, 'rssi':aBeacon.rssi, 'name':aBeacon.advertisement.localName, 'txpower':aBeacon.advertisement.txPowerLevel})
+            })
+            beaconpingPOSTargs.data={'beacons':lstBeacon};
+            RESTclient.post(beaconpingpostUrl, beaconpingPOSTargs, function(data, response) {
+                console.log (JSON.stringify(beaconpingPOSTargs.data))
+                console.log(`Beacons reported to backbone (${response.statusCode} ${response.statusMessage})`)          
+            })
+        }    
+        setTimeout(BLEScanSignatures, BLEScanPeriod)
     }
     console.log ("(re)Start Beacon Detection")
     beaconDetected = [];
     noble.stopScanning();    
-    noble.startScanning();    
-    setTimeout(BLEScanSignatures, BLEScanPeriod)
+    noble.startScanning([], continuous);    
 }
 
 BLEState = function (state) {
