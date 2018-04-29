@@ -1,16 +1,24 @@
 var noble = require('noble');
 var RESTClient = require('node-rest-client').Client;
+const {auth} = require('google-auth-library');
 var os = require('os');
 var ifaces = os.networkInterfaces();
 var RESTclient = new RESTClient();
 
-const PubSub = require('@google-cloud/pubsub');
-const projectId = 'geotag-200012';
-const pubsub = new PubSub();
-
 // The name for the new topic
 const beaconTopicName = 'beaconping';
 const gwTopicName = 'gwping';
+
+// Google stuff
+var googleClient = null;
+var beaconPublishUrl = null;
+var gwPublishUrl = null;
+async function initGooglePubSub () {
+    const projectId = await auth.getDefaultProjectId();
+    beaconPublishUrl = `https://pubsub.googleapis.com/v1/projects/${projectId}/topics/${beaconTopicName}:publish`
+    gwPublishUrl = `https://pubsub.googleapis.com/v1/projects/${projectId}/topics/${gwTopicName}:publish` 
+    console.log ("initGooglePubSub Done")   
+}
 
 
 // Few params
@@ -18,23 +26,6 @@ const continuous = true;
 const BLEScanPeriod = 20000;
 const GWPingPeriod = 5000;
 const usePubSub = true;
-
-// PubSub init
-var pubsubClient = null;
-if (usePubSub) {
-    // Instantiates a client
-    pubsubClient = new PubSub({
-    projectId: projectId,
-  });
-}
-
-
-const beaconTopic = pubsub.topic(beaconTopicName);
-const gwTopic = pubsub.topic(gwTopicName);
-const beaconPublisher = beaconTopic.publisher();
-const gwPublisher = gwTopic.publisher();
-const beaconData = Buffer.from('Beacon Signature Trace');
-const gwData = Buffer.from('GW Signature Trace');
 
 // GLobal var
 var detectoruuid = '';
@@ -56,8 +47,20 @@ var gwpingPOSTargs = {
     headers: { "Content-Type": "application/json", "Authorization" : Auth}
 };
 
+async function googleAuthenticate() {
+    googleClient = await auth.getClient({
+      scopes: 'https://www.googleapis.com/auth/pubsub'
+    });
+    console.log ("googleAuthenticate Done")   
 
-BLEDiscovered = function(peripheral) {
+    /*
+    const url = `https://www.googleapis.com/dns/v1/projects/${projectId}`;
+    const res = await client.request({ url });
+    console.log(res.data);
+    */
+}
+
+ async function BLEDiscovered (peripheral) {
     peripheral.ts = (new Date).getTime();
     if (continuous) {
         beaconpingPOSTargs.data={ 'ts':peripheral.ts.toString(), 'gwid':detectoruuid, 'address':peripheral.address, 'rssi':peripheral.rssi.toString(), 'name':((peripheral.advertisement.localName != undefined) ? peripheral.advertisement.localName: "uknown"), 'txpower':((peripheral.advertisement.txPowerLevel != undefined) ? peripheral.advertisement.txPowerLevel.toString():'unknown')}
@@ -67,15 +70,13 @@ BLEDiscovered = function(peripheral) {
                 console.log(`Beacons reported to backbone (${response.statusCode} ${response.statusMessage})`)          
             })    
         } else {
-            //console.log (beaconpingPOSTargs.data)
-            beaconPublisher.publish(beaconData, beaconpingPOSTargs.data, function(err, messageId) {
-                if (err) {
-                    // Error handling omitted.
-                    console.log ("PubSub error "+err);
-                  } else {
-                    console.log(`Beacons reported to pubsub`)                                
-                  }           
-            });    
+            try {
+                var payload=Buffer.from(JSON.stringify(beaconpingPOSTargs.data)).toString('base64')
+                const res = await googleClient.request({ method: 'post', url:beaconPublishUrl, data:{ messages: [ { data: payload} ] } });
+                console.log(res.data);
+            } catch (e) {
+                console.error(e);
+            }        //console.log (JSON.stringify(gwpingPOSTargs.data))
         }
     } else {
         beaconDetected.push(peripheral);
@@ -83,7 +84,7 @@ BLEDiscovered = function(peripheral) {
     }
 }
 
-BLEScanSignatures = function() {
+async function BLEScanSignatures() {
 
     if (!continuous) {
         lstBeacon = [];
@@ -99,14 +100,13 @@ BLEScanSignatures = function() {
                     console.log(`Beacons reported to backbone (${response.statusCode} ${response.statusMessage})`)          
                 })
             } else {
-                beaconPublisher.publish(beaconData,beaconpingPOSTargs.data, function(err, messageId) {
-                    if (err) {
-                        // Error handling omitted.
-                        console.log ("PubSub error "+err);
-                      }  else {
-                        console.log(`Beacons reported to pubsub`)                                
-                      }            
-                });    
+                try {
+                    var payload=Buffer.from(JSON.stringify(beaconpingPOSTargs.data)).toString('base64')
+                    const res = await googleClient.request({ method: 'post', url:beaconPublishUrl, data:{ messages: [ { data: payload} ] } });
+                    console.log(res.data);
+                } catch (e) {
+                    console.error(e);
+                }        //console.log (JSON.stringify(gwpingPOSTargs.data))
             }
         }    
         setTimeout(BLEScanSignatures, BLEScanPeriod)
@@ -121,6 +121,10 @@ BLEState = function (state) {
     console.log ("BLE State: "+state);
     switch(state) {
         case 'poweredOn':
+            if (usePubSub) {
+                initGooglePubSub();
+                googleAuthenticate()    
+            }
             BLEScanSignatures()
             break;
         default:
@@ -129,7 +133,7 @@ BLEState = function (state) {
     }
 }
 
-GWPing = function () {
+ async function GWPing () {
 
     inet = [];
     Object.keys(ifaces).forEach(function (ifname) {
@@ -159,15 +163,13 @@ GWPing = function () {
         })    
     } else {
         gwpingPOSTargs.data={'ts':((new Date).getTime()).toString(), 'gwid':detectoruuid, 'ip':inet[0].ip};
-        //console.log (JSON.stringify(gwpingPOSTargs.data))
-        gwPublisher.publish(gwData, gwpingPOSTargs.data, function(err, messageId) {
-            if (err) {
-                // Error handling omitted.
-                console.log ("PubSub error "+err);
-              } else {
-                console.log(`GW Ping reported to pubsub`)          
-              }           
-        });    
+        try {
+            var payload=Buffer.from(JSON.stringify(gwpingPOSTargs.data)).toString('base64')
+            const res = await googleClient.request({ method: 'post', url:gwPublishUrl, data:{ messages: [ { data: payload} ] } });
+            console.log(res.data);
+        } catch (e) {
+            console.error(e);
+        }        //console.log (JSON.stringify(gwpingPOSTargs.data))
     }
     setTimeout(GWPing, GWPingPeriod)    
 }
@@ -178,7 +180,7 @@ noble.on('stateChange', BLEState);
 require("machine-uuid")(function(uuid) {
     detectoruuid = uuid;
     console.log ("BLE Detector unique ID: "+detectoruuid)
-    GWPing();
+    setTimeout (GWPing, GWPingPeriod);
 })
 
 //noble.startScanning();
