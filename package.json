@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "@google-cloud/pubsub": "^0.18.0",
+    "async": "^2.6.0",
     "google-auth-library": "^1.4.0",
     "machine-uuid": "^1.2.0",
     "noble": "^1.9.1",
