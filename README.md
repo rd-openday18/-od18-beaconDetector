@@ -6,14 +6,16 @@
     This program do not use full Google Cloud Platform SDK because of targeted platform (a Raspberry PI Zero/arm6)
     Google Authentication lib is used then raw REST API call are used. 
 
+    WIP
+
 # Installation
-    ``` 
-    npm install
-    ```
+```sh 
+npm install
+```
 # usage
     this program is intend to be used with google PubSub. You will need to setup a service account and download the service account json key file then setup GOOGLE_APPLICATION_CREDENTIALS accordingly. [Check Google page on authentication](https://cloud.google.com/docs/authentication/)
 
-    ```
-    export GOOGLE_APPLICATION_CREDENTIALS=<your gcp json file>
-    node main.js
-    ```
+```sh
+export GOOGLE_APPLICATION_CREDENTIALS=<your gcp json file>
+node main.js
+```
