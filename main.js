@@ -59,7 +59,7 @@ function beaconPublished (err) {
     if (err.status == false) {
         console.log ("Google pubsub return error "+err.result)
     } else {
-        console.log (err.result.data)
+        console.log ("Beacon published "+JSON.stringify (err.result.data))
     }
 } 
  async function BLEDiscovered (peripheral) {
@@ -114,7 +114,7 @@ BLEState = function (state) {
     try {
         var payload=Buffer.from(JSON.stringify(gwping)).toString('base64')
         const res = await googleClient.request({ method: 'post', url:gwPublishUrl, data:{ messages: [ { data: payload} ] } });
-        console.log(res.data);
+        console.log ("GW ID published "+JSON.stringify (res.data))
     } catch (e) {
         console.error(e);
     }        //console.log (JSON.stringify(gwpingPOSTargs.data))
