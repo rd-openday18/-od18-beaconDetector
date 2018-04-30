@@ -125,7 +125,7 @@ BLEState = function (state) {
                 initGooglePubSub();
                 googleAuthenticate()    
             }
-            BLEScanSignatures()
+            setTimeout (BLEScanSignatures,5000);
             break;
         default:
 
