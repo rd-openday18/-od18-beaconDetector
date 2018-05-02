@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "async": "^2.6.0",
+    "dotenv": "^5.0.1",
     "google-auth-library": "^1.4.0",
     "machine-uuid": "^1.2.0",
     "noble": "^1.9.1"
