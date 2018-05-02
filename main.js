@@ -82,7 +82,7 @@ googlePublishQueue.saturated = function() {
 
 function resetWindowedStats ()
 {
-    lastStats = stats;
+    lastStats = JSON.parse(JSON.stringify(stats));
     stats.window.maxpending=0;
     stats.window.published_success=0;
     stats.window.published_failure=0;
@@ -143,13 +143,12 @@ BLEState = function (state) {
         ifaces[ifname].forEach(function (iface) {
             if ('IPv4' !== iface.family || iface.internal !== false) {
             // skip over internal (i.e. 127.0.0.1) and non-ipv4 addresses
-            return;
+                return;
             }
-
             if (alias >= 1) {
             } else {
             // this interface has only one ipv4 adress
-            inet.push ({'ip':iface.address})
+                inet.push ({'ip':iface.address})
             }
             ++alias;
         });
@@ -160,13 +159,12 @@ BLEState = function (state) {
     resetWindowedStats();
     //console.log (gwping)
     try {
-        //console.log (gwping)
         var payload=Buffer.from(JSON.stringify(gwping)).toString('base64')
         const res = await googleClient.request({ method: 'post', url:gwPublishUrl, data:{ messages: [ { data: payload} ] } });
         //console.log ("GW ID published "+JSON.stringify (res.data))
     } catch (e) {
         console.error(e);
-    }        //console.log (JSON.stringify(gwpingPOSTargs.data))
+    }   //console.log (JSON.stringify(gwpingPOSTargs.data))
 }
 
 function checkConfig(callback) {
