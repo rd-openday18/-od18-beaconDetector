@@ -12,6 +12,8 @@ const {auth} = require('google-auth-library');
 var os = require('os');
 var async = require("async");
 var ifaces = os.networkInterfaces();
+var express = require('express');
+var app = express();
 
 // GLobal var
 var detectoruuid = '';
@@ -26,6 +28,7 @@ var stats = {
     published_failure : 0  
   }
 };
+var lastStats = stats;
 
 
 // Google stuff
@@ -79,6 +82,7 @@ googlePublishQueue.saturated = function() {
 
 function resetWindowedStats ()
 {
+    lastStats = stats;
     stats.window.maxpending=0;
     stats.window.published_success=0;
     stats.window.published_failure=0;
@@ -100,6 +104,10 @@ function beaconPublished (err) {
 
 async function BLEScanSignatures() {
     //console.log ("Start Beacon Detection")
+    if (process.env.CONTINUOUS_SCAN == 'false') {
+        // We are in batch mode, let's publish stats when scan batch is completed.
+        GWPing();
+    }
     noble.stopScanning();
     noble.startScanning([], (process.env.CONTINUOUS_SCAN==true)?true:false);
 }
@@ -152,6 +160,7 @@ BLEState = function (state) {
     resetWindowedStats();
     //console.log (gwping)
     try {
+        //console.log (gwping)
         var payload=Buffer.from(JSON.stringify(gwping)).toString('base64')
         const res = await googleClient.request({ method: 'post', url:gwPublishUrl, data:{ messages: [ { data: payload} ] } });
         //console.log ("GW ID published "+JSON.stringify (res.data))
@@ -175,11 +184,21 @@ function checkConfig(callback) {
     } else
     if ((process.env.CONTINUOUS_SCAN == 'false') && (process.env.SCAN_PERIOD == undefined)) {
         callback (false, "SCAN_PERIOD is missing")
-    } else {
+    } else 
+    {
         callback (true, "Let's go");
     }
 }
 
+var server = app.listen(3001, 'localhost', function() {
+    console.log("... port %d in %s mode", server.address().port, app.settings.env);
+});
+
+app.get('/status', function(req, res) {
+    res.send(JSON.stringify(lastStats));
+  });
+
+  
 checkConfig(function (res, msg) {
     if (res == true) {
         // let'g get platform UUID
@@ -187,7 +206,12 @@ checkConfig(function (res, msg) {
             detectoruuid = uuid;
             console.log ("BLE Detector unique ID: "+detectoruuid)
             // Start regular publish of gw identity
-            setInterval (GWPing, process.env.GW_PUBLISH_PERIOD);
+            if (process.env.CONTINUOUS_SCAN == 'true') {
+                stats.window.period = process.env.GW_PUBLISH_PERIOD;
+                setInterval (GWPing, process.env.GW_PUBLISH_PERIOD);
+            } else {
+                stats.window.period = process.env.SCAN_PERIOD;
+            }
             // start lstening beacons
             noble.on('discover', BLEDiscovered);
             noble.on('stateChange', BLEState);
