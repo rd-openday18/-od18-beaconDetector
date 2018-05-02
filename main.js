@@ -109,7 +109,7 @@ async function BLEScanSignatures() {
         GWPing();
     }
     noble.stopScanning();
-    noble.startScanning([], (process.env.CONTINUOUS_SCAN==true)?true:false);
+    noble.startScanning([], (process.env.CONTINUOUS_SCAN=='true')?true:false);
 }
 
 BLEState = function (state) {
