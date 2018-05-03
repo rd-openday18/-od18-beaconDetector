@@ -60,8 +60,13 @@ async function googleAuthenticate() {
 }
 
 async function gcpPublish (payload) {
-    const rest = await googleClient.request({ method: 'post', url:beaconPublishUrl, data:{ messages: [ { data: payload} ] } });
-    return rest;
+    const rest = null;
+    try {
+        const rest = await googleClient.request({ method: 'post', url:beaconPublishUrl, data:{ messages: [ { data: payload} ] } });
+        return ({status:true, result:rest});
+    } catch(e) {
+        return ({status:false, result:e});
+     }
 }
 
 var googlePublishQueue = {}
@@ -69,9 +74,13 @@ function initQueue (nbWorker) {
     googlePublishQueue = async.queue(function (task, callback) {
         try {
             gcpPublish(task.payload).then(function(rest) {
-                stats.published_success++;
-                stats.window.published_success++;
-                if (callback!=undefined) {callback({status:true, result:rest})};
+                if (rest.status == false) {
+                    if (callback!=undefined) {callback({status:false, result:rest.result})};    
+                } else {
+                    stats.published_success++;
+                    stats.window.published_success++;
+                    if (callback!=undefined) {callback({status:true, result:rest.result})};    
+                }
             });
         } catch (e) {
             stats.published_failure++;
