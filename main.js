@@ -93,6 +93,7 @@ googlePublishQueue.saturated = function() {
 
 function resetWindowedStats ()
 {
+    winston.log ('debug', JSON.stringify(stats));
     lastStats = JSON.parse(JSON.stringify(stats));
     stats.window.maxpending=0;
     stats.window.published_success=0;
