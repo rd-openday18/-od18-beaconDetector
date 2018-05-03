@@ -6,7 +6,16 @@ if (process.env.NODE_ENV !== 'production') {
     require('dotenv').load();
 }
 
+// logger
+var winston = require('winston');
+winston.level = 'info'
+if (process.env.TRACE_LEVEL != undefined) {
+    winston.level = process.env.TRACE_LEVEL
+}
+
+
 //dependencies
+
 var noble = require('noble');
 const {auth} = require('google-auth-library');
 var os = require('os');
@@ -40,14 +49,14 @@ async function initGooglePubSub () {
     const baseUrlPublish = `https://pubsub.googleapis.com/v1/projects/${projectId}/topics`;
     beaconPublishUrl = `${baseUrlPublish}/${process.env.BEACON_DISCOVERY_TOPIC_NAME}:publish`
     gwPublishUrl = `${baseUrlPublish}/${process.env.GW_DISCOVERY_TOPIC_NAME}:publish`
-    console.log ("Google PubSub : URL init Done")
+    winston.info ("Google PubSub : URL init Done")
 }
 
 async function googleAuthenticate() {
     googleClient = await auth.getClient({
       scopes: 'https://www.googleapis.com/auth/pubsub'
     });
-    console.log ("Google PubSub : Authentication Done")
+    winston.info ("Google PubSub : Authentication Done")
 }
 
 async function gcpPublish (payload) {
@@ -55,27 +64,29 @@ async function gcpPublish (payload) {
     return rest;
 }
 
-var googlePublishQueue = async.queue(function (task, callback) {
-    try {
-        gcpPublish(task.payload).then(function(rest) {
-            stats.published_success++;
-            stats.window.published_success++;
-            if (callback!=undefined) {callback({status:true, result:rest})};
-        });
-    } catch (e) {
-        stats.published_failure++;
-        stats.window.published_failure++;
-        console.log (e);
-        if (callback!=undefined) {callback({status:true, result:e})};
-    }
-}, 2);
+var googlePublishQueue = {}
+function initQueue (nbWorker) {
+    googlePublishQueue = async.queue(function (task, callback) {
+        try {
+            gcpPublish(task.payload).then(function(rest) {
+                stats.published_success++;
+                stats.window.published_success++;
+                if (callback!=undefined) {callback({status:true, result:rest})};
+            });
+        } catch (e) {
+            stats.published_failure++;
+            stats.window.published_failure++;
+            console.log (e);
+            if (callback!=undefined) {callback({status:true, result:e})};
+        }
+    }, nbWorker);
+}
 
 googlePublishQueue.drain = function() {
-    //console.log('All beacons AD have been published');
+    winston.log('debug', 'All beacons AD have been published');
 }
 
 googlePublishQueue.saturated = function() {
-    //console.log('Worker queue saturated '+googlePublishQueue.length());
     stats.maxpending=Math.max(stats.maxpending, googlePublishQueue.length());
     stats.window.maxpending=Math.max(stats.window.maxpending, googlePublishQueue.length());
 }
@@ -90,20 +101,21 @@ function resetWindowedStats ()
 
 function beaconPublished (err) {
     if (err.status == false) {
-        console.log ("Google pubsub return error "+err.result)
+        winston.error ("Google pubsub return error "+err.result)
     } else {
-        // console.log ("Beacon published "+JSON.stringify (err.result.data))
+        winston.log ('debug', "Beacon published "+JSON.stringify (err.result.data))
     }
 }
  async function BLEDiscovered (peripheral) {
     peripheral.ts = (new Date).getTime();
     var beaconPing={ 'ts':peripheral.ts.toString(), 'gwid':detectoruuid, 'address':peripheral.address, 'rssi':peripheral.rssi.toString(), 'name':((peripheral.advertisement.localName != undefined) ? peripheral.advertisement.localName: "uknown"), 'txpower':((peripheral.advertisement.txPowerLevel != undefined) ? peripheral.advertisement.txPowerLevel.toString():'unknown')}
     var payload=Buffer.from(JSON.stringify(beaconPing)).toString('base64')
+    winston.log('debug', 'Push beacong msg to queue')
     googlePublishQueue.push ([{payload :payload}], beaconPublished);
 }
 
 async function BLEScanSignatures() {
-    //console.log ("Start Beacon Detection")
+    winston.log ('debug', "Start Beacon Detection")
     if (process.env.CONTINUOUS_SCAN == 'false') {
         // We are in batch mode, let's publish stats when scan batch is completed.
         GWPing();
@@ -113,18 +125,18 @@ async function BLEScanSignatures() {
 }
 
 BLEState = function (state) {
-    console.log ("BLE State: "+state);
+    winston.info ("BLE State: "+state);
     switch(state) {
         case 'poweredOn':
             initGooglePubSub();
             googleAuthenticate()
             if (process.env.CONTINUOUS_SCAN == 'false') {
                 // Scan by batch, repeat scan procedure each period
-                console.log (`Mode : Batch (${process.env.SCAN_PERIOD})`)
+                winston.info (`Mode : Batch (${process.env.SCAN_PERIOD})`)
                 setInterval(BLEScanSignatures, process.env.SCAN_PERIOD)
             } else {
                 // continuous scan mode
-                console.log ("Mode : Continuous")
+                winston.info ("Mode : Continuous")
             }
             // At least, start scan one(first) time soon.
             setTimeout (BLEScanSignatures,1000);
@@ -161,7 +173,7 @@ BLEState = function (state) {
     try {
         var payload=Buffer.from(JSON.stringify(gwping)).toString('base64')
         const res = await googleClient.request({ method: 'post', url:gwPublishUrl, data:{ messages: [ { data: payload} ] } });
-        //console.log ("GW ID published "+JSON.stringify (res.data))
+        winston.log ('debug', "GW ID published "+JSON.stringify (res.data))
     } catch (e) {
         console.error(e);
     }   //console.log (JSON.stringify(gwpingPOSTargs.data))
@@ -183,13 +195,16 @@ function checkConfig(callback) {
     if ((process.env.CONTINUOUS_SCAN == 'false') && (process.env.SCAN_PERIOD == undefined)) {
         callback (false, "SCAN_PERIOD is missing")
     } else 
+    if (process.env.PUBLISH_MAX_WORKER == undefined) {
+        callback (false, "PUBLISH_MAX_WORKER is missing")
+    } else
     {
         callback (true, "Let's go");
     }
 }
 
 var server = app.listen(3001, 'localhost', function() {
-    console.log("... port %d in %s mode", server.address().port, app.settings.env);
+    winston.info("... port %d in %s mode", server.address().port, app.settings.env);
 });
 
 app.get('/status', function(req, res) {
@@ -199,10 +214,11 @@ app.get('/status', function(req, res) {
   
 checkConfig(function (res, msg) {
     if (res == true) {
+        initQueue(process.env.PUBLISH_MAX_WORKER)
         // let'g get platform UUID
         require("machine-uuid")(function(uuid) {
             detectoruuid = uuid;
-            console.log ("BLE Detector unique ID: "+detectoruuid)
+            winston.info ("BLE Detector unique ID: "+detectoruuid)
             // Start regular publish of gw identity
             if (process.env.CONTINUOUS_SCAN == 'true') {
                 stats.window.period = process.env.GW_PUBLISH_PERIOD;
@@ -215,7 +231,7 @@ checkConfig(function (res, msg) {
             noble.on('stateChange', BLEState);
         })
     } else {
-        console.log ("Error while checking mandatory params: "+msg)
+        winston.error ("Error while checking mandatory params: "+msg)
         process.exit(1);
     }
 })
