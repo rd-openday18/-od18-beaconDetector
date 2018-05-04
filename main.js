@@ -16,7 +16,6 @@ winston.default.transports.console.timestamp = true;
 
 
 //dependencies
-
 var noble = require('noble');
 const {auth} = require('google-auth-library');
 var os = require('os');
@@ -24,6 +23,7 @@ var async = require("async");
 var ifaces = os.networkInterfaces();
 var express = require('express');
 var app = express();
+
 
 // GLobal var
 var detectoruuid = '';
@@ -92,6 +92,8 @@ function startQueue (nbWorker) {
             if (callback!=undefined) {callback({status:true, result:e})};
         }
     }, nbWorker);
+    // Hack
+    process.env.UV_THREADPOOL_SIZE = nbWorker
 }
 
 googlePublishQueue.drain = function() {
