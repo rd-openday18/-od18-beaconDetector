@@ -70,11 +70,13 @@ async function gcpPublish (payload) {
 }
 
 var googlePublishQueue = {}
-function initQueue (nbWorker) {
+function startQueue (nbWorker) {
     googlePublishQueue = async.queue(function (task, callback) {
         try {
             gcpPublish(task.payload).then(function(rest) {
                 if (rest.status == false) {
+                    stats.published_failure++;
+                    stats.window.published_failure++;
                     if (callback!=undefined) {callback({status:false, result:rest.result})};    
                 } else {
                     stats.published_success++;
@@ -224,7 +226,7 @@ app.get('/status', function(req, res) {
   
 checkConfig(function (res, msg) {
     if (res == true) {
-        initQueue(process.env.PUBLISH_MAX_WORKER)
+        startQueue(process.env.PUBLISH_MAX_WORKER)
         // let'g get platform UUID
         require("machine-uuid")(function(uuid) {
             detectoruuid = uuid;
