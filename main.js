@@ -180,7 +180,7 @@ BLEState = function (state) {
     });
 
 
-    gwping={'ts':((new Date).getTime()).toString(), 'gwid':detectoruuid, 'ip':inet[0].ip, 'stats':JSON.stringify(stats)};
+    gwping={'ts':((new Date).getTime()).toString(), 'gwid':detectoruuid, 'ip':inet[0].ip, 'stats':stats};
     resetWindowedStats();
     //console.log (gwping)
     try {
