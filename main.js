@@ -12,6 +12,7 @@ winston.level = 'info'
 if (process.env.TRACE_LEVEL != undefined) {
     winston.level = process.env.TRACE_LEVEL
 }
+winston.default.transports.console.timestamp = true;
 
 
 //dependencies
