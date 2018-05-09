@@ -23,6 +23,7 @@ var async = require("async");
 var ifaces = os.networkInterfaces();
 var express = require('express');
 var app = express();
+var advlib = require('advlib');
 
 
 // GLobal var
@@ -38,8 +39,10 @@ var stats = {
     published_failure : 0  
   }
 };
-var lastStats = stats;
-
+var lastStats = JSON.parse(JSON.stringify(stats));
+var inet = [];
+var mac = [];
+var beaconPubMsgs = [];
 
 // Google stuff
 var googleClient = null;
@@ -63,7 +66,7 @@ async function googleAuthenticate() {
 async function gcpPublish (payload) {
     const rest = null;
     try {
-        const rest = await googleClient.request({ method: 'post', url:beaconPublishUrl, data:{ messages: [ { data: payload} ] } });
+        const rest = await googleClient.request({ method: 'post', url:beaconPublishUrl, data:{ messages: payload } });
         return ({status:true, result:rest});
     } catch(e) {
         return ({status:false, result:e});
@@ -76,18 +79,18 @@ function startQueue (nbWorker) {
         try {
             gcpPublish(task.payload).then(function(rest) {
                 if (rest.status == false) {
-                    stats.published_failure++;
-                    stats.window.published_failure++;
+                    stats.published_failure+=task.nbmsg;
+                    stats.window.published_failure+=task.nbmsg;
                     if (callback!=undefined) {callback({status:false, result:rest.result})};    
                 } else {
-                    stats.published_success++;
-                    stats.window.published_success++;
+                    stats.published_success+=task.nbmsg;
+                    stats.window.published_success+=task.nbmsg;
                     if (callback!=undefined) {callback({status:true, result:rest.result})};    
                 }
             });
         } catch (e) {
-            stats.published_failure++;
-            stats.window.published_failure++;
+            stats.published_failure+=task.nbmsg;
+            stats.window.published_failure+=task.nbmsg;
             console.log (e);
             if (callback!=undefined) {callback({status:true, result:e})};
         }
@@ -122,11 +125,16 @@ function beaconPublished (err) {
     }
 }
  async function BLEDiscovered (peripheral) {
+    res=advlib.ble.data.gap.manufacturerspecificdata.process(peripheral.advertisement.manufacturerData.toString('hex'));
     peripheral.ts = (new Date).getTime();
-    var beaconPing={ 'ts':peripheral.ts.toString(), 'gwid':detectoruuid, 'address':peripheral.address, 'rssi':peripheral.rssi.toString(), 'name':((peripheral.advertisement.localName != undefined) ? peripheral.advertisement.localName: "uknown"), 'txpower':((peripheral.advertisement.txPowerLevel != undefined) ? peripheral.advertisement.txPowerLevel.toString():'unknown')}
+    var beaconPing= { 'datetime':(peripheral.ts/1000), 'sniffer_addr':mac[0].mac, 'adv_addr':peripheral.address, 'adv_constructor':res.companyName, 'rssi':peripheral.rssi, 'name':((peripheral.advertisement.localName != undefined) ? peripheral.advertisement.localName: "uknown"), 'txpower':((peripheral.advertisement.txPowerLevel != undefined) ? peripheral.advertisement.txPowerLevel.toString():'unknown')}
     var payload=Buffer.from(JSON.stringify(beaconPing)).toString('base64')
-    winston.log('debug', 'Push beacong msg to queue')
-    googlePublishQueue.push ([{payload :payload}], beaconPublished);
+    if (process.env.CONTINUOUS_SCAN=='true') {
+        winston.log('debug', 'Continuous : Push beacong msg to queue')
+        googlePublishQueue.push ([{payload :[{ data : payload}], nbmsg:1}], beaconPublished);    
+    } else {
+        beaconPubMsgs.push ({ data:payload});
+    }
 }
 
 async function BLEScanSignatures() {
@@ -136,6 +144,11 @@ async function BLEScanSignatures() {
         GWPing();
     }
     noble.stopScanning();
+    if (process.env.CONTINUOUS_SCAN=='false' && beaconPubMsgs.length>0) {
+        winston.log('debug', 'Batch : Push beacong msgs to queue')
+        googlePublishQueue.push ([{payload :[beaconPubMsgs], nbmsg: beaconPubMsgs.length}], beaconPublished);    
+    }
+    beaconPubMsgs = [];
     noble.startScanning([], (process.env.CONTINUOUS_SCAN=='true')?true:false);
 }
 
@@ -163,7 +176,21 @@ BLEState = function (state) {
 }
 
  async function GWPing () {
+    resetWindowedStats();
+    gwping={'datetime':((new Date).getTime())/1000, 'sniffer_addr':mac[0].mac, 'ip':inet[0].ip, 'stats':lastStats};
+    //console.log (gwping)
+    try {
+        var payload=Buffer.from(JSON.stringify(gwping)).toString('base64')
+        const res = await googleClient.request({ method: 'post', url:gwPublishUrl, data:{ messages: [ { data: payload} ] } });
+        winston.log ('debug', "GW ID published "+JSON.stringify (res.data))
+    } catch (e) {
+        console.error(e);
+    }   //console.log (JSON.stringify(gwpingPOSTargs.data))
+}
+
+function getId() {
     inet = [];
+    mac = [];
     Object.keys(ifaces).forEach(function (ifname) {
         var alias = 0;
 
@@ -176,25 +203,16 @@ BLEState = function (state) {
             } else {
             // this interface has only one ipv4 adress
                 inet.push ({'ip':iface.address})
+                mac.push ({mac:iface.mac})
             }
             ++alias;
         });
     });
 
-
-    gwping={'ts':((new Date).getTime()).toString(), 'gwid':detectoruuid, 'ip':inet[0].ip, 'stats':lastStats};
-    resetWindowedStats();
-    //console.log (gwping)
-    try {
-        var payload=Buffer.from(JSON.stringify(gwping)).toString('base64')
-        const res = await googleClient.request({ method: 'post', url:gwPublishUrl, data:{ messages: [ { data: payload} ] } });
-        winston.log ('debug', "GW ID published "+JSON.stringify (res.data))
-    } catch (e) {
-        console.error(e);
-    }   //console.log (JSON.stringify(gwpingPOSTargs.data))
 }
 
 function checkConfig(callback) {
+    getId();
     if (process.env.BEACON_DISCOVERY_TOPIC_NAME == undefined) {
         callback (false, "BEACON_DISCOVERY_TOPIC_NAME is missing")
     } else
@@ -234,6 +252,7 @@ checkConfig(function (res, msg) {
         require("machine-uuid")(function(uuid) {
             detectoruuid = uuid;
             winston.info ("BLE Detector unique ID: "+detectoruuid)
+            winston.info ("BLE Detector mac ID: "+mac[0].mac)
             // Start regular publish of gw identity
             if (process.env.CONTINUOUS_SCAN == 'true') {
                 stats.window.period = process.env.GW_PUBLISH_PERIOD;
