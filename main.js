@@ -43,6 +43,7 @@ var lastStats = JSON.parse(JSON.stringify(stats));
 var inet = [];
 var mac = [];
 var beaconPubMsgs = [];
+var lastHRT = 0;
 
 // Google stuff
 var googleClient = null;
@@ -125,31 +126,28 @@ function beaconPublished (err) {
     }
 }
  async function BLEDiscovered (peripheral) {
-    res=advlib.ble.data.gap.manufacturerspecificdata.process(peripheral.advertisement.manufacturerData.toString('hex'));
+    currentHRT = process.hrtime()[0];
+    if (peripheral.advertisement != undefined && peripheral.advertisement.manufacturerData != undefined) {
+        res=advlib.ble.data.gap.manufacturerspecificdata.process(peripheral.advertisement.manufacturerData.toString('hex'));
+    }
     peripheral.ts = (new Date).getTime();
     var beaconPing= { 'datetime':(peripheral.ts/1000), 'sniffer_addr':mac[0].mac, 'adv_addr':peripheral.address, 'adv_constructor':res.companyName, 'rssi':peripheral.rssi, 'name':((peripheral.advertisement.localName != undefined) ? peripheral.advertisement.localName: "uknown"), 'txpower':((peripheral.advertisement.txPowerLevel != undefined) ? peripheral.advertisement.txPowerLevel.toString():'unknown')}
     var payload=Buffer.from(JSON.stringify(beaconPing)).toString('base64')
-    if (process.env.CONTINUOUS_SCAN=='true') {
-        winston.log('debug', 'Continuous : Push beacong msg to queue')
-        googlePublishQueue.push ([{payload :[{ data : payload}], nbmsg:1}], beaconPublished);    
-    } else {
-        beaconPubMsgs.push ({ data:payload});
+    beaconPubMsgs.push ({ data:payload});
+    if (((currentHRT  - lastHRT) >= process.env.BATCH_MAX_PERIOD) || (beaconPubMsgs.length>=process.env.BATCH_MAX_SIZE)) {
+        winston.log('debug', 'Push beacons msg to queue')
+        googlePublishQueue.push ([{payload :[beaconPubMsgs], nbmsg: beaconPubMsgs.length}], beaconPublished);
+        stats.window.period = currentHRT  - lastHRT;
+        GWPing();
+        beaconPubMsgs=[];
+        lastHRT = currentHRT;
     }
 }
 
 async function BLEScanSignatures() {
     winston.log ('debug', "Start Beacon Detection")
-    if (process.env.CONTINUOUS_SCAN == 'false') {
-        // We are in batch mode, let's publish stats when scan batch is completed.
-        GWPing();
-    }
-    noble.stopScanning();
-    if (process.env.CONTINUOUS_SCAN=='false' && beaconPubMsgs.length>0) {
-        winston.log('debug', 'Batch : Push beacong msgs to queue')
-        googlePublishQueue.push ([{payload :[beaconPubMsgs], nbmsg: beaconPubMsgs.length}], beaconPublished);    
-    }
-    beaconPubMsgs = [];
-    noble.startScanning([], (process.env.CONTINUOUS_SCAN=='true')?true:false);
+    lastHRT = process.hrtime()[0];
+    noble.startScanning([], true);
 }
 
 BLEState = function (state) {
@@ -158,14 +156,6 @@ BLEState = function (state) {
         case 'poweredOn':
             initGooglePubSub();
             googleAuthenticate()
-            if (process.env.CONTINUOUS_SCAN == 'false') {
-                // Scan by batch, repeat scan procedure each period
-                winston.info (`Mode : Batch (${process.env.SCAN_PERIOD})`)
-                setInterval(BLEScanSignatures, process.env.SCAN_PERIOD)
-            } else {
-                // continuous scan mode
-                winston.info ("Mode : Continuous")
-            }
             // At least, start scan one(first) time soon.
             setTimeout (BLEScanSignatures,1000);
             break;
@@ -222,11 +212,11 @@ function checkConfig(callback) {
     if (process.env.GW_PUBLISH_PERIOD == undefined) {
         callback (false, "GW_PUBLISH_PERIOD is missing")
     } else
-    if (process.env.CONTINUOUS_SCAN == undefined) {
-        callback (false, "CONTINUOUS_SCAN is missing")
+    if (process.env.BATCH_MAX_PERIOD == undefined) {
+        callback (false, "BATCH_MAX_PEDIOD is missing")
     } else
-    if ((process.env.CONTINUOUS_SCAN == 'false') && (process.env.SCAN_PERIOD == undefined)) {
-        callback (false, "SCAN_PERIOD is missing")
+    if ((process.env.BATCH_MAX_SIZE == undefined)) {
+        callback (false, "BATCH_MAX_SIZE is missing")
     } else 
     if (process.env.PUBLISH_MAX_WORKER == undefined) {
         callback (false, "PUBLISH_MAX_WORKER is missing")
@@ -253,13 +243,6 @@ checkConfig(function (res, msg) {
             detectoruuid = uuid;
             winston.info ("BLE Detector unique ID: "+detectoruuid)
             winston.info ("BLE Detector mac ID: "+mac[0].mac)
-            // Start regular publish of gw identity
-            if (process.env.CONTINUOUS_SCAN == 'true') {
-                stats.window.period = process.env.GW_PUBLISH_PERIOD;
-                setInterval (GWPing, process.env.GW_PUBLISH_PERIOD);
-            } else {
-                stats.window.period = process.env.SCAN_PERIOD;
-            }
             // start lstening beacons
             noble.on('discover', BLEDiscovered);
             noble.on('stateChange', BLEState);
