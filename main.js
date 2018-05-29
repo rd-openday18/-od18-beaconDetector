@@ -136,7 +136,7 @@ function beaconPublished (err) {
     beaconPubMsgs.push ({ data:payload});
     if (((currentHRT  - lastHRT) >= process.env.BATCH_MAX_PERIOD) || (beaconPubMsgs.length>=process.env.BATCH_MAX_SIZE)) {
         winston.log('debug', 'Push beacons msg to queue')
-        googlePublishQueue.push ([{payload :[beaconPubMsgs], nbmsg: beaconPubMsgs.length}], beaconPublished);
+        googlePublishQueue.push ([{payload :[...beaconPubMsgs], nbmsg: beaconPubMsgs.length}], beaconPublished);
         stats.window.period = currentHRT  - lastHRT;
         GWPing();
         beaconPubMsgs=[];
