@@ -46,7 +46,8 @@ var beaconPubMsgs = [];
 var lastHRT = 0;
 
 // Google stuff
-var googleClient = null;
+var googleClientBeacon = null;
+var googleClientGw = null;
 var beaconPublishUrl = null;
 var gwPublishUrl = null;
 async function initGooglePubSub () {
@@ -58,16 +59,19 @@ async function initGooglePubSub () {
 }
 
 async function googleAuthenticate() {
-    googleClient = await auth.getClient({
+    googleClientBeacon = await auth.getClient({
       scopes: 'https://www.googleapis.com/auth/pubsub'
     });
-    winston.info ("Google PubSub : Authentication Done")
+    googleClientGw = await auth.getClient({
+        scopes: 'https://www.googleapis.com/auth/pubsub'
+      });
+      winston.info ("Google PubSub : Authentication Done")
 }
 
 async function gcpPublish (payload) {
     const rest = null;
     try {
-        const rest = await googleClient.request({ method: 'post', url:beaconPublishUrl, data:{ messages: payload } });
+        const rest = await googleClientBeacon.request({ method: 'post', url:beaconPublishUrl, data:{ messages: payload } });
         return ({status:true, result:rest});
     } catch(e) {
         return ({status:false, result:e});
@@ -171,7 +175,7 @@ BLEState = function (state) {
     //console.log (gwping)
     try {
         var payload=Buffer.from(JSON.stringify(gwping)).toString('base64')
-        const res = await googleClient.request({ method: 'post', url:gwPublishUrl, data:{ messages: [ { data: payload} ] } });
+        const res = await googleClientGw.request({ method: 'post', url:gwPublishUrl, data:{ messages: [ { data: payload} ] } });
         winston.log ('debug', "GW ID published "+JSON.stringify (res.data))
     } catch (e) {
         console.error(e);
