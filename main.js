@@ -148,7 +148,7 @@ function beaconPublished (err) {
     var payload=Buffer.from(JSON.stringify(beaconPing)).toString('base64')
     beaconPubMsgs.push ({ data:payload});
     if (((currentHRT  - lastHRT) >= process.env.BATCH_MAX_PERIOD) || (beaconPubMsgs.length>=process.env.BATCH_MAX_SIZE)) {
-        winston.log('debug', 'Push beacons msg to queue ('+googlePublishQueue.length())+' pending)')
+        winston.log('debug', 'Push beacons msg to queue ('+googlePublishQueue.length+' pending)')
         googlePublishQueue.push ([{payload :[...beaconPubMsgs], nbmsg: beaconPubMsgs.length}], beaconPublished);
         stats.window.period = currentHRT  - lastHRT;
         GWPing();
