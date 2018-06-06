@@ -151,7 +151,7 @@ function beaconPublished (err) {
         winston.log('debug', 'Push beacons msg to queue ('+googlePublishQueue.length()+' pending)')
         googlePublishQueue.push ([{payload :[...beaconPubMsgs], nbmsg: beaconPubMsgs.length}], beaconPublished);
         stats.window.period = currentHRT  - lastHRT;
-        GWPing();
+        //GWPing();
         beaconPubMsgs=[];
         lastHRT = currentHRT;
     }
@@ -171,6 +171,7 @@ BLEState = function (state) {
             googleAuthenticate()
             // At least, start scan one(first) time soon.
             setTimeout (BLEScanSignatures,1000);
+            setInterval (GWPing,process.env.GW_PUBLISH_PERIOD);            
             break;
         default:
             noble.stopScanning();
@@ -190,7 +191,7 @@ BLEState = function (state) {
             httpAgent: new http.Agent({ keepAlive: true }), 
             httpsAgent: new https.Agent({ keepAlive: true })
          });
-        winston.log ('debug', "GW ID published "+JSON.stringify (res.data))
+        winston.log ('debug', "GW ID published "+JSON.stringify (res.data.messageIds.length)+" ack received)")
     } catch (e) {
         console.error(e);
     }   //console.log (JSON.stringify(gwpingPOSTargs.data))
