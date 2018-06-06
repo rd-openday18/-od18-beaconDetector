@@ -25,6 +25,9 @@ var express = require('express');
 var app = express();
 var advlib = require('advlib');
 
+const http = require('http');
+const https = require('https');
+
 
 // GLobal var
 var detectoruuid = '';
@@ -71,7 +74,13 @@ async function googleAuthenticate() {
 async function gcpPublish (payload) {
     const rest = null;
     try {
-        const rest = await googleClientBeacon.request({ method: 'post', url:beaconPublishUrl, data:{ messages: payload } });
+        winston.debug("Sending POST request")
+        const rest = await googleClientBeacon.request({ method: 'post', 
+            url:beaconPublishUrl, 
+            data:{ messages: payload }, 
+            httpAgent: new http.Agent({ keepAlive: true }), 
+            httpsAgent: new https.Agent({ keepAlive: true })
+        });
         return ({status:true, result:rest});
     } catch(e) {
         return ({status:false, result:e});
@@ -126,7 +135,7 @@ function beaconPublished (err) {
     if (err.status == false) {
         winston.error ("Google pubsub return error "+err.result)
     } else {
-        winston.log ('debug', "Beacon published "+JSON.stringify (err.result.data))
+        winston.log ('debug', "Beacon published ("+JSON.stringify (err.result.data.messageIds.length)+" ack received)")
     }
 }
  async function BLEDiscovered (peripheral) {
@@ -139,7 +148,7 @@ function beaconPublished (err) {
     var payload=Buffer.from(JSON.stringify(beaconPing)).toString('base64')
     beaconPubMsgs.push ({ data:payload});
     if (((currentHRT  - lastHRT) >= process.env.BATCH_MAX_PERIOD) || (beaconPubMsgs.length>=process.env.BATCH_MAX_SIZE)) {
-        winston.log('debug', 'Push beacons msg to queue')
+        winston.log('debug', 'Push beacons msg to queue ('+googlePublishQueue.length())+' pending)')
         googlePublishQueue.push ([{payload :[...beaconPubMsgs], nbmsg: beaconPubMsgs.length}], beaconPublished);
         stats.window.period = currentHRT  - lastHRT;
         GWPing();
@@ -175,7 +184,12 @@ BLEState = function (state) {
     //console.log (gwping)
     try {
         var payload=Buffer.from(JSON.stringify(gwping)).toString('base64')
-        const res = await googleClientGw.request({ method: 'post', url:gwPublishUrl, data:{ messages: [ { data: payload} ] } });
+        const res = await googleClientGw.request({ method: 'post', 
+            url:gwPublishUrl, 
+            data:{ messages: [ { data: payload} ] },
+            httpAgent: new http.Agent({ keepAlive: true }), 
+            httpsAgent: new https.Agent({ keepAlive: true })
+         });
         winston.log ('debug', "GW ID published "+JSON.stringify (res.data))
     } catch (e) {
         console.error(e);
