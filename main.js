@@ -1,6 +1,6 @@
 // Few params
 const GWPingPeriod = 5000;
-const viaRelay = false
+const viaRelay = true
 // Env in Dev
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').load();
