@@ -1,6 +1,6 @@
 // Few params
 const GWPingPeriod = 5000;
-
+const viaRelay = false
 // Env in Dev
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').load();
@@ -27,6 +27,77 @@ var advlib = require('advlib');
 
 const http = require('http');
 const https = require('https');
+
+async function PostBeacon(data) {
+    return new Promise (function (resolve, reject) {
+        // Build the post string from an object
+        var post_data = data;
+    
+        // An object of options to indicate where to post to
+        var post_options = {
+            host: 'ec2-52-47-191-104.eu-west-3.compute.amazonaws.com',
+            port: '8080',
+            path: '',
+            method: 'POST',
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+    
+        // Set up the request
+        var post_req = http.request(post_options, function(res) {
+            res.setEncoding('utf8');
+            res.on('data', function (chunk) {
+                console.log('Response: ' + chunk);
+                resolve ({status:true, result:chunk})
+            });
+            res.on('error', function (e){
+                resolve ({status:false, result:e})
+            });
+        });
+    
+        // post the data
+        post_req.write(JSON.stringify(post_data));
+        post_req.end();
+    
+    })
+}
+
+
+async function PostGateway(data) {
+    return new Promise (function (resolve, reject) {
+        // Build the post string from an object
+        var post_data = data;
+    
+        // An object of options to indicate where to post to
+        var post_options = {
+            host: 'ec2-52-47-191-104.eu-west-3.compute.amazonaws.com',
+            port: '8082',
+            path: '',
+            method: 'POST',
+            headers: {
+                "Content-Type": "application/json",
+            }
+        };
+    
+        // Set up the request
+        var post_req = http.request(post_options, function(res) {
+            res.setEncoding('utf8');
+            res.on('data', function (chunk) {
+                console.log('Response: ' + chunk);
+                resolve ({status:true, result:chunk})
+            });
+            res.on('error', function (e){
+                resolve ({status:false, result:e})
+            });
+        });
+    
+        // post the data
+        post_req.write(JSON.stringify(post_data));
+        post_req.end();
+    
+    })
+}
 
 
 // GLobal var
@@ -75,13 +146,18 @@ async function gcpPublish (payload) {
     const rest = null;
     try {
         winston.debug("Sending POST request")
-        const rest = await googleClientBeacon.request({ method: 'post', 
-            url:beaconPublishUrl, 
-            data:{ messages: payload }, 
-            httpAgent: new http.Agent({ keepAlive: true }), 
-            httpsAgent: new https.Agent({ keepAlive: true })
-        });
-        return ({status:true, result:rest});
+        if (viaRelay == true) {
+            const rest = await PostBeacon (payload)
+            return ({status:true, result:rest});
+        } else {
+            const rest = await googleClientBeacon.request({ method: 'post', 
+                url:beaconPublishUrl, 
+                data:{ messages: payload }, 
+                httpAgent: new http.Agent({ keepAlive: true }), 
+                httpsAgent: new https.Agent({ keepAlive: true })
+            });
+            return ({status:true, result:rest});
+        }
     } catch(e) {
         return ({status:false, result:e});
      }
@@ -185,13 +261,17 @@ BLEState = function (state) {
     //console.log (gwping)
     try {
         var payload=Buffer.from(JSON.stringify(gwping)).toString('base64')
-        const res = await googleClientGw.request({ method: 'post', 
-            url:gwPublishUrl, 
-            data:{ messages: [ { data: payload} ] },
-            httpAgent: new http.Agent({ keepAlive: true }), 
-            httpsAgent: new https.Agent({ keepAlive: true })
-         });
-        winston.log ('debug', "GW ID published "+JSON.stringify (res.data.messageIds.length)+" ack received)")
+        if (viaRelay == true) {
+            const rest = await PostGateway (payload)
+        } else {
+           const res = await googleClientGw.request({ method: 'post', 
+                url:gwPublishUrl, 
+                data:{ messages: [ { data: payload} ] },
+                httpAgent: new http.Agent({ keepAlive: true }), 
+                httpsAgent: new https.Agent({ keepAlive: true })
+            });
+            winston.log ('debug', "GW ID published "+JSON.stringify (res.data.messageIds.length)+" ack received)")
+        }
     } catch (e) {
         console.error(e);
     }   //console.log (JSON.stringify(gwpingPOSTargs.data))
