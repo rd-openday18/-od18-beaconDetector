@@ -54,6 +54,8 @@ async function PostBeacon(data) {
             res.on('error', function (e){
                 resolve ({status:false, result:e})
             });
+        }).on("error", (err) => {
+            resolve ({status:false, result:err})
         });
     
         // post the data
@@ -90,6 +92,8 @@ async function PostGateway(data) {
             res.on('error', function (e){
                 resolve ({status:false, result:e})
             });
+        }).on("error", (err) => {
+            resolve ({status:false, result:err})
         });
     
         // post the data
@@ -257,7 +261,7 @@ BLEState = function (state) {
 
  async function GWPing () {
     resetWindowedStats();
-    gwping={'datetime':((new Date).getTime())/1000, 'sniffer_addr':mac[0].mac, 'ip':inet[0].ip, 'stats':lastStats};
+    gwping={'datetime':((new Date).getTime())/1000, 'sniffer_addr':mac[0].mac, 'ip':inet[0].ip, 'hostname':os.hostname(), 'stats':lastStats};
     //console.log (gwping)
     try {
         var payload=Buffer.from(JSON.stringify(gwping)).toString('base64')
