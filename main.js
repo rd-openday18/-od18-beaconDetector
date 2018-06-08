@@ -215,7 +215,11 @@ function beaconPublished (err) {
     if (err.status == false) {
         winston.error ("Google pubsub return error "+err.result)
     } else {
-        winston.log ('debug', "Beacon published ("+JSON.stringify (err.result.data.messageIds.length)+" ack received)")
+        if (viaRelay == true) {
+            winston.log ('debug', "Beacon published")
+        } else {
+            winston.log ('debug', "Beacon published ("+JSON.stringify (err.result.data.messageIds.length)+" ack received)")
+        }
     }
 }
  async function BLEDiscovered (peripheral) {
