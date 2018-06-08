@@ -35,7 +35,7 @@ async function PostBeacon(data) {
     
         // An object of options to indicate where to post to
         var post_options = {
-            host: 'ec2-52-47-191-104.eu-west-3.compute.amazonaws.com',
+            host: '35.180.77.163',
             port: '8080',
             path: '',
             method: 'POST',
@@ -73,7 +73,7 @@ async function PostGateway(data) {
     
         // An object of options to indicate where to post to
         var post_options = {
-            host: 'ec2-52-47-191-104.eu-west-3.compute.amazonaws.com',
+            host: '35.180.77.163',
             port: '8082',
             path: '',
             method: 'POST',
