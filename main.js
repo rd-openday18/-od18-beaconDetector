@@ -48,11 +48,15 @@ async function PostBeacon(data) {
         var post_req = http.request(post_options, function(res) {
             res.setEncoding('utf8');
             res.on('data', function (chunk) {
-                console.log('Response: ' + chunk);
+                winston.log('debug', 'Response: ' + chunk);
                 resolve ({status:true, result:chunk})
             });
             res.on('error', function (e){
                 resolve ({status:false, result:e})
+            });
+            res.on('end', function () {
+                winston.log('debug', 'End request');
+                resolve ({status:true, result:null})
             });
         }).on("error", (err) => {
             resolve ({status:false, result:err})
@@ -86,11 +90,15 @@ async function PostGateway(data) {
         var post_req = http.request(post_options, function(res) {
             res.setEncoding('utf8');
             res.on('data', function (chunk) {
-                console.log('Response: ' + chunk);
+                winston.log('debug', 'Response: ' + chunk);
                 resolve ({status:true, result:chunk})
             });
             res.on('error', function (e){
                 resolve ({status:false, result:e})
+            });
+            res.on('end', function () {
+                winston.log('debug', 'End request');
+                resolve ({status:true, result:null})
             });
         }).on("error", (err) => {
             resolve ({status:false, result:err})
